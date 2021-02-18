@@ -1,2 +1,4 @@
 newline_style = "unix"
-max_width = 160
+use_field_init_shorthand = true
+use_try_shorthand = true
+match_arm_leading_pipes = "Always"
