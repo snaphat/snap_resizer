@@ -83,22 +83,19 @@ where
     // Implement trait to pass closure as lparam.
     // See: https://stackoverflow.com/questions/38995701/how-do-i-pass-a-closure-through-raw-pointers-as-an-argument-to-a-c-function
     let trait_obj: &dyn Fn(HWND) -> i32 = &func;
-    let trait_obj_ref = &trait_obj;
-    let state = trait_obj_ref as *const _ as LPARAM;
+    let lparam = &trait_obj as *const _ as LPARAM;
 
     // Wrapper function to call closure.
     extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let trait_obj_ref: &&dyn Fn(HWND) -> i32 = unsafe {
-            let closure_pointer_pointer = lparam as *const LPARAM;
-            &*(closure_pointer_pointer as *const _)
-        };
+        let trait_obj_ref: &&dyn Fn(HWND) -> i32 =
+            unsafe { &*(lparam as *const LPARAM as *const _) };
         return trait_obj_ref(hwnd);
     }
 
     // Run Callback API.
     let callback: WNDENUMPROC = Some(enum_windows_callback);
     unsafe {
-        EnumWindows(callback, state);
+        EnumWindows(callback, lparam);
     }
 }
 
