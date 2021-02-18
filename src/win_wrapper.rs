@@ -76,19 +76,19 @@ pub fn get_window_bounds(hwnd: HWND) -> Option<RECT> {
     }
 }
 
-pub fn enum_windows<F>(func: F)
+pub fn enum_windows<F>(mut func: F)
 where
-    F: Fn(HWND) -> i32,
+    F: FnMut(HWND) -> i32,
 {
     // Implement trait to pass closure as lparam.
     // See: https://stackoverflow.com/questions/38995701/how-do-i-pass-a-closure-through-raw-pointers-as-an-argument-to-a-c-function
-    let trait_obj: &dyn Fn(HWND) -> i32 = &func;
-    let lparam = &trait_obj as *const _ as LPARAM;
+    let mut trait_obj: &mut dyn FnMut(HWND) -> i32 = &mut func;
+    let lparam = &mut trait_obj as *mut _ as LPARAM;
 
     // Wrapper function to call closure.
     extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let trait_obj_ref: &&dyn Fn(HWND) -> i32 =
-            unsafe { &*(lparam as *const LPARAM as *const _) };
+        let trait_obj_ref: &mut &mut dyn FnMut(HWND) -> i32 =
+            unsafe { &mut *(lparam as *mut LPARAM as *mut _) };
         return trait_obj_ref(hwnd);
     }
 
