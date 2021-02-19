@@ -104,18 +104,21 @@ pub fn get_window_rect(hwnd: HWND) -> Result<RECT, Error> {
     }
 }
 
-pub fn set_window_pos(hwnd: HWND, x: i32, y: i32, cx: i32, cy: i32) -> Result<i32, Error> {
+// Sage API to set window position.
+pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, Error> {
     let ret = unsafe {
         SetWindowPos(
             hwnd,
             ptr::null_mut(),
-            x,
-            y,
-            cx,
-            cy,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
             SWP_NOACTIVATE | SWP_NOZORDER,
         )
     };
+
+    // Make sure the return value was valid before returning.
     match ret {
         | 0 => Err(Error::last_os_error()),
         | _ => Ok(ret),

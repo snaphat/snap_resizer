@@ -22,8 +22,10 @@ macro_rules! unwrap_or_return {
     };
 }
 
+const MOD:i32 = 12;
+
 // Enumerate Windows Handler
-fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, m_rect: RECT) -> i32 {
+fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
     // Ignore invisible windows.
     if !is_window_visible(o_hwnd) {
         return 1; // Return 1 to continue enumerating.
@@ -31,18 +33,53 @@ fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, m_rect: RECT) -> i32 {
 
     // Get bounds of enumerated window.
     if let Ok(o_rect) = get_window_rect(o_hwnd) {
-        // Print moved/resized Window handle and coordinates.
-        println!(
-            "(x,y)\nhandle: {:?}\nStart: ({}, {})\nStop: ({}, {})",
-            m_hwnd, m_rect.left, m_rect.top, m_rect.right, m_rect.bottom
-        );
+        let mut reposition = false;
+        //println!("{} = {} - {}",  i32::abs(m_rect.right - o_rect.left), m_rect.right, o_rect.left);
+        if i32::abs(-MOD + m_rect.right - o_rect.left) < MOD*2 {
+            println!("Window on left");
+            println!("{} {}", m_rect.right, o_rect.left);
+            m_rect.right = o_rect.left + MOD;
+            reposition = true;
+        }
+        else if m_rect.left > 1 && i32::abs(MOD + m_rect.left - o_rect.right) < MOD*2 {
+            println!("Window on right");
+            println!("{} {}", m_rect.left, o_rect.right);
+            m_rect.left = o_rect.right;
+            reposition = true;
+        }
+        else if m_rect.top > 1 && i32::abs(-MOD + m_rect.bottom - o_rect.top) < MOD*2 {
+            println!("Window on top");
+            println!("{} {}", m_rect.bottom, o_rect.top);
+            m_rect.bottom = o_rect.top + MOD/2;
+            reposition = true;
+        }
+        else if m_rect.top > 1 && i32::abs(MOD + m_rect.top - o_rect.bottom) < MOD*2 {
+            println!("Window on bottom");
+            println!("{} {}", m_rect.top, o_rect.bottom);
+            m_rect.top = o_rect.bottom - MOD/2;
+            reposition = true;
+        }
 
-        // Print other window Window handle and coordinates.
-        println!(
-            "\n(x,y)\nhandle: {:?}\nStart: ({}, {})\nStop: ({}, {})",
-            o_hwnd, o_rect.left, o_rect.top, o_rect.right, o_rect.bottom
-        );
-        println!("==========================");
+        if reposition {
+            if let Err(a) = set_window_pos(m_hwnd, m_rect) {
+                println!("{}", a);
+            } else {
+                println!("success");
+            }
+        }
+
+        // Print moved/resized Window handle and coordinates.
+        //println!(
+        //    "(x,y)\nhandle: {:?}\nStart: ({}, {})\nStop: ({}, {})",
+        //    m_hwnd, m_rect.left, m_rect.top, m_rect.right, m_rect.bottom
+        //);
+        //
+        //// Print other window Window handle and coordinates.
+        //println!(
+        //    "\n(x,y)\nhandle: {:?}\nStart: ({}, {})\nStop: ({}, {})",
+        //    o_hwnd, o_rect.left, o_rect.top, o_rect.right, o_rect.bottom
+        //);
+        //println!("==========================");
     }
 
     return 1; // Return 1 to continue enumerating.
