@@ -6,6 +6,7 @@ use std::ptr;
 use winapi::shared::minwindef::*;
 use winapi::shared::windef::*;
 use winapi::shared::*;
+use winapi::um::dwmapi::*;
 use winapi::um::winnt::*;
 use winapi::um::winuser;
 use winapi::um::winuser::*;
@@ -14,7 +15,8 @@ pub type HWND = windef::HWND;
 pub type RECT = windef::RECT;
 //pub const EVENT_SYSTEM_MOVESIZESTART: UINT = winuser:: EVENT_SYSTEM_MOVESIZESTART;
 pub const EVENT_SYSTEM_MOVESIZEEND: UINT = winuser::EVENT_SYSTEM_MOVESIZEEND;
-pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: DPI_AWARENESS_CONTEXT = windef::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+pub const DPI_AWARENESS_CONTEXT_SYSTEM_AWARE: DPI_AWARENESS_CONTEXT =
+    windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE;
 
 // Safe API to retrieve Windows Messages.
 pub fn get_message() -> Option<MSG> {
@@ -68,9 +70,10 @@ pub fn _msgbox(title: &str, msg: &str) -> Result<i32, Error> {
     }
 }
 
-pub fn set_process_dpi_aware_context(ctx: DPI_AWARENESS_CONTEXT)
-{
-    unsafe { SetProcessDpiAwarenessContext(ctx); };
+pub fn set_process_dpi_aware_context(ctx: DPI_AWARENESS_CONTEXT) {
+    unsafe {
+        SetProcessDpiAwarenessContext(ctx);
+    };
 }
 
 // Safe API to handle is window visible.
@@ -78,12 +81,11 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
     return unsafe { IsWindowVisible(hwnd) } != 0;
 }
 
-// Safe API to get window bounds.
+// Safe API to get window position. Returns screen relative coordinates.
 pub fn get_window_rect(hwnd: HWND) -> Result<RECT, Error> {
     // Run windows API and return the return value and rect.
-    /*
-    let (ret, rect) = unsafe {
-        let mut _rect = mem::MaybeUninit::<RECT>::zeroed().assume_init();
+    let (ret, frame) = unsafe {
+        let mut _rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
         let ptr = &_rect as *const RECT as LPVOID;
         let ret = DwmGetWindowAttribute(
             hwnd,
@@ -93,33 +95,63 @@ pub fn get_window_rect(hwnd: HWND) -> Result<RECT, Error> {
         );
         (ret, _rect)
     };
-    */
 
-    // Run windows API and return the return value and rect.
-    let (ret, rect) = unsafe {
-        let mut _rect = mem::MaybeUninit::<RECT>::zeroed().assume_init();
+    // Make sure return value was valid before returning rect.
+    match ret {
+        | 0 => Ok(frame),
+        | _ => Err(Error::last_os_error()),
+    }
+}
+
+// Sage API to set window position. Takes in screen relative coordinates.
+pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, Error> {
+    // Run windows API to get client area and return the return value and rect.
+    let (ret, client) = unsafe {
+        let mut _rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
         let ptr = &_rect as *const RECT as LPRECT;
         let ret = GetWindowRect(hwnd, ptr);
         (ret, _rect)
     };
 
-    // Make sure return value was valid before returning rect.
-    match ret {
-        | 0 => Err(Error::last_os_error()),
-        | _ => Ok(rect),
+    // Make sure return value was valid.
+    if ret == 0 {
+        return Err(Error::last_os_error());
     }
-}
 
-// Sage API to set window position.
-pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, Error> {
+    // Run windows API to get frame and return the return value and rect.
+    let (ret, frame) = unsafe {
+        let mut _rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+        let ptr = &_rect as *const RECT as LPVOID;
+        let ret = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            ptr,
+            mem::size_of_val(&_rect) as u32,
+        );
+        (ret, _rect)
+    };
+
+    // Make sure return value was valid.
+    if ret != 0 {
+        return Err(Error::last_os_error());
+    }
+
+    // Compute borders from frame and client.
+    let mut border = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    border.left = frame.left - client.left;
+    border.top = frame.top - client.top;
+    border.right = client.right - frame.right;
+    border.bottom = client.bottom - frame.bottom;
+
+    // Adjust  because the windows API for setting position is stupid and not screen relative.
     let ret = unsafe {
         SetWindowPos(
             hwnd,
             ptr::null_mut(),
-            rect.left,
-            rect.top,
-            rect.right - rect.left,
-            rect.bottom - rect.top,
+            rect.left - border.left,
+            rect.top - border.top,
+            rect.right - rect.left + border.left + border.right,
+            rect.bottom - rect.top + border.top + border.bottom,
             SWP_NOACTIVATE | SWP_NOZORDER,
         )
     };
