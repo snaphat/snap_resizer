@@ -14,6 +14,7 @@ pub type HWND = windef::HWND;
 pub type RECT = windef::RECT;
 //pub const EVENT_SYSTEM_MOVESIZESTART: UINT = winuser:: EVENT_SYSTEM_MOVESIZESTART;
 pub const EVENT_SYSTEM_MOVESIZEEND: UINT = winuser::EVENT_SYSTEM_MOVESIZEEND;
+pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: DPI_AWARENESS_CONTEXT = windef::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
 
 // Safe API to retrieve Windows Messages.
 pub fn get_message() -> Option<MSG> {
@@ -65,6 +66,11 @@ pub fn _msgbox(title: &str, msg: &str) -> Result<i32, Error> {
         | 0 => Err(Error::last_os_error()),
         | _ => Ok(ret),
     }
+}
+
+pub fn set_process_dpi_aware_context(ctx: DPI_AWARENESS_CONTEXT)
+{
+    unsafe { SetProcessDpiAwarenessContext(ctx); };
 }
 
 // Safe API to handle is window visible.

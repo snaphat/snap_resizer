@@ -22,7 +22,7 @@ macro_rules! unwrap_or_return {
     };
 }
 
-const MOD:i32 = 12;
+const MOD:i32 = 20;
 
 // Enumerate Windows Handler
 fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
@@ -44,7 +44,7 @@ fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
         else if m_rect.left > 1 && i32::abs(MOD + m_rect.left - o_rect.right) < MOD*2 {
             println!("Window on right");
             println!("{} {}", m_rect.left, o_rect.right);
-            m_rect.left = o_rect.right;
+            m_rect.left = o_rect.right - MOD;
             reposition = true;
         }
         else if m_rect.top > 1 && i32::abs(-MOD + m_rect.bottom - o_rect.top) < MOD*2 {
@@ -103,6 +103,8 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
 }
 
 fn main() {
+    set_process_dpi_aware_context(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     // Setup closure for event hook. Done this way for readability.
     let func = |event, m_hwnd, id_child| {
         event_handler(event, m_hwnd, id_child);
