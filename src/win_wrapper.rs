@@ -5,9 +5,7 @@ use std::mem;
 use std::ptr;
 use winapi::shared::minwindef::*;
 use winapi::shared::windef::*;
-use winapi::shared::winerror::*;
 use winapi::shared::*;
-use winapi::um::dwmapi::*;
 use winapi::um::winnt::*;
 use winapi::um::winuser;
 use winapi::um::winuser::*;
@@ -75,8 +73,9 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
 }
 
 // Safe API to get window bounds.
-pub fn get_window_bounds(hwnd: HWND) -> Option<RECT> {
+pub fn get_window_rect(hwnd: HWND) -> Result<RECT, Error> {
     // Run windows API and return the return value and rect.
+    /*
     let (ret, rect) = unsafe {
         let mut _rect = mem::MaybeUninit::<RECT>::zeroed().assume_init();
         let ptr = &_rect as *const RECT as LPVOID;
@@ -88,14 +87,38 @@ pub fn get_window_bounds(hwnd: HWND) -> Option<RECT> {
         );
         (ret, _rect)
     };
+    */
+
+    // Run windows API and return the return value and rect.
+    let (ret, rect) = unsafe {
+        let mut _rect = mem::MaybeUninit::<RECT>::zeroed().assume_init();
+        let ptr = &_rect as *const RECT as LPRECT;
+        let ret = GetWindowRect(hwnd, ptr);
+        (ret, _rect)
+    };
 
     // Make sure return value was valid before returning rect.
     match ret {
-        | S_OK => Some(rect),
-        | _ => {
-            println!("Failed to get rect! for handle {:?}", hwnd);
-            None
-        }
+        | 0 => Err(Error::last_os_error()),
+        | _ => Ok(rect),
+    }
+}
+
+pub fn set_window_pos(hwnd: HWND, x: i32, y: i32, cx: i32, cy: i32) -> Result<i32, Error> {
+    let ret = unsafe {
+        SetWindowPos(
+            hwnd,
+            ptr::null_mut(),
+            x,
+            y,
+            cx,
+            cy,
+            SWP_NOACTIVATE | SWP_NOZORDER,
+        )
+    };
+    match ret {
+        | 0 => Err(Error::last_os_error()),
+        | _ => Ok(ret),
     }
 }
 

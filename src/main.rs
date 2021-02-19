@@ -2,10 +2,21 @@
 mod win_wrapper;
 use win_wrapper::*;
 
+/*
 macro_rules! unwrap_or_return {
     ( $e:expr ) => {
         match $e {
             | Some(x) => x,
+            | _ => return,
+        }
+    };
+}
+*/
+
+macro_rules! unwrap_or_return {
+    ( $e:expr ) => {
+        match $e {
+            | Ok(x) => x,
             | _ => return,
         }
     };
@@ -19,7 +30,7 @@ fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, m_rect: RECT) -> i32 {
     }
 
     // Get bounds of enumerated window.
-    if let Some(o_rect) = get_window_bounds(o_hwnd) {
+    if let Ok(o_rect) = get_window_rect(o_hwnd) {
         // Print moved/resized Window handle and coordinates.
         println!(
             "(x,y)\nhandle: {:?}\nStart: ({}, {})\nStop: ({}, {})",
@@ -45,7 +56,7 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
     }
 
     // Retrieve bounds for the moved window or return if failed.
-    let m_rect = unwrap_or_return!(get_window_bounds(m_hwnd));
+    let m_rect = unwrap_or_return!(get_window_rect(m_hwnd));
 
     // Setup closure for EnumWindow callback. Done this way for readability.
     let enum_closure = |o_hwnd| -> i32 { enum_handler(m_hwnd, o_hwnd, m_rect) };
