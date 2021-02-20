@@ -1,21 +1,57 @@
 #[cfg(windows)]
 mod win_wrapper;
 use win_wrapper::*;
+use winapi::shared::minwindef::LPDWORD;
 
 const THRESH: i32 = 40;
 
 // Enumerate Windows Handler
 fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
-    // Ignore invisible windows.
-    if !is_window_visible(o_hwnd) {
+    // Ignore iconic windows -- same as minimized.
+    /*
+    if is_window_iconic(o_hwnd) {
+        return 1;
+    }
+    */
+
+    // Ignore minimized windows.
+    if let Ok(ret) = is_window_minimized(o_hwnd) {
+        if ret == true {
+            return 1;
+        }
+    } else {
+        return 1; // Drop-out if API call failed.
+    }
+
+    // Ignore maximized windows.
+    if let Ok(ret) = is_window_maximized(o_hwnd) {
+        if ret == true {
+            return 1;
+        }
+    } else {
+        return 1; // Drop-out if API call failed.
+    }
+
+    // Ignore non-taskbar windows.
+    if !is_taskbar_window(o_hwnd) {
         return 1; // Return 1 to continue enumerating.
     }
 
     // Get bounds of enumerated window.
     if let Ok(o_rect) = get_window_rect(o_hwnd) {
-        let mut reposition = false;
+        //
+        let a = unsafe {
+            let mut a: winapi::shared::minwindef::DWORD = 0;
+            winapi::um::winuser::GetWindowThreadProcessId(o_hwnd, &mut a as *mut _ as LPDWORD);
+            a
+        };
+        println!(
+            "{:?} {} {} {} {} id {}",
+            o_hwnd, o_rect.left, o_rect.top, o_rect.right, o_rect.bottom, a
+        );
 
         // Compare positions and snap windows that are close by.
+        let mut reposition = false;
         if i32::abs(m_rect.right - o_rect.left) < THRESH {
             println!("Window on left");
             m_rect.right = o_rect.left;
@@ -61,6 +97,8 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
             // Setup closure for EnumWindow callback. Done this way for readability.
             let enum_closure = |o_hwnd| -> i32 { enum_handler(m_hwnd, o_hwnd, m_rect) };
 
+            println!("\n========\n");
+
             // Enumerate windows.
             enum_windows(enum_closure);
         }
@@ -69,7 +107,10 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
 }
 
 fn main() {
-    set_process_dpi_aware_context(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+    // Set the process as DPI aware.
+    if let Err(ret) = set_process_dpi_aware_context(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) {
+        println!("{}", ret);
+    }
 
     // Setup closure for event hook. Done this way for readability.
     let func = |event, m_hwnd, id_child| {
