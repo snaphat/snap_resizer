@@ -19,8 +19,8 @@ pub const EVENT_SYSTEM_MOVESIZEEND: UINT = winuser::EVENT_SYSTEM_MOVESIZEEND;
 pub const DPI_AWARENESS_CONTEXT_SYSTEM_AWARE: DPI_AWARENESS_CONTEXT =
     windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE;
 
-// Safe API to retrieve Windows Messages.
-pub fn get_message() -> Option<MSG> {
+// Safe API to retrieve Windows Messages. Returns None on WM_QUIT result.
+pub fn get_message() -> Result<Option<MSG>, String> {
     // Initialize memory.
     let mut msg: MSG = unsafe { mem::MaybeUninit::zeroed().assume_init() };
 
@@ -29,12 +29,9 @@ pub fn get_message() -> Option<MSG> {
 
     // Check for errors before returning message.
     match ret {
-        | 0 => {
-            println!("Error in get_message() return.");
-            None
-        }
-        | -1 => None,
-        | _ => Some(msg),
+        | 0 => Ok(None),
+        | -1 => Err(Error::last_os_error().to_string()),
+        | _ => Ok(Some(msg)),
     }
 }
 
@@ -159,26 +156,18 @@ pub fn is_window_iconic(hwnd: HWND) -> bool {
 
 // Safe API to retrieve whether a window is minimized.
 pub fn is_window_minimized(hwnd: HWND) -> Result<bool, String> {
-    // Call API.
-    let ret = get_window_placement(hwnd);
+    // Call API or return error.
+    let ret = get_window_placement(hwnd)?; // Failure most likely an invalid handle.
 
-    // Check for errors.
-    match ret {
-        | Ok(ret) => Ok(ret.showCmd == SW_SHOWMINIMIZED as u32), // Return wrapped bool.
-        | Err(err) => Err(err),                                  // Most likely an invalid handle.
-    }
+    Ok(ret.showCmd == SW_SHOWMINIMIZED as u32) // Return wrapped bool.
 }
 
 // Safe API to retrieve whether a window is maximized.
 pub fn is_window_maximized(hwnd: HWND) -> Result<bool, String> {
-    // Call API.
-    let ret = get_window_placement(hwnd);
+    // Call API or return error.
+    let ret = get_window_placement(hwnd)?; // Failure most likely an invalid handle.
 
-    // Check for errors.
-    match ret {
-        | Ok(ret) => Ok(ret.showCmd == SW_SHOWMAXIMIZED as u32), // Return wrapped bool.
-        | Err(err) => Err(err),                                  // Most likely an invalid handle.
-    }
+    Ok(ret.showCmd == SW_SHOWMAXIMIZED as u32) // Return wrapped bool.
 }
 
 // Safe API to retrieve window visibility.
@@ -190,14 +179,10 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
 
 // Safe API to retrieve window cloaked state.
 pub fn is_window_cloaked(hwnd: HWND) -> Result<bool, String> {
-    // Fill type.
-    let ret = get_window_attribute::<i32>(hwnd, DWMWA_CLOAKED);
+    // Call API or return error.
+    let ret = get_window_attribute::<i32>(hwnd, DWMWA_CLOAKED)?;
 
-    // Check for errors.
-    match ret {
-        | Ok(ret) => Ok(ret != 0), // Return wrapped bool.
-        | Err(err) => Err(err),    // Most likely an invalid handle.
-    }
+    return Ok(ret != 0); // Return wrapped bool.
 }
 
 // Safe API to retrieve a handle to a window that has the specified relationship to the specified window.
@@ -274,14 +259,10 @@ pub fn get_window_attribute<T>(hwnd: HWND, dw_attribute: DWORD) -> Result<T, Str
 
 // Safe API to get window position. Returns screen relative coordinates.
 pub fn get_window_rect(hwnd: HWND) -> Result<RECT, String> {
-    // Call API.
-    let ret = get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS);
+    // Call API or return Error.
+    let rect = get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS)?; // Most likely an invalid handle.
 
-    // Check for Errors.
-    match ret {
-        | Ok(rect) => Ok(rect), // Return wrapped RECT.
-        | err => err,           // Most likely an invalid handle.
-    }
+    Ok(rect) // Return wrapped RECT.
 }
 
 // Safe API to set the current process as DPI aware.
@@ -325,16 +306,12 @@ pub fn get_titlebar_info(hwnd: HWND) -> Result<TITLEBARINFO, String> {
 // Safe API to set window position. Takes in screen relative coordinates.
 pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
     // Run windows API to get client (inner frame) coordinates and return client RECT.
-    let client = match get_window_rect(hwnd) {
-        | Ok(ret) => ret,              // Unwrap frame.
-        | Err(err) => return Err(err), // Most likely an invalid handle.
-    };
+    // An error result is most likely an invalid handle.
+    let client = get_window_rect(hwnd)?;
 
     // Run windows API to get frame and return frame RECT.
-    let frame = match get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS) {
-        | Ok(ret) => ret,              // Unwrap frame.
-        | Err(err) => return Err(err), // Most likely an invalid handle.
-    };
+    // An error result is most likely an invalid handle.
+    let frame = get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS)?;
 
     // Compute borders from frame and client.
     let mut border = RECT { left: 0, top: 0, right: 0, bottom: 0 };

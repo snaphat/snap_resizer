@@ -126,15 +126,16 @@ fn main() {
     // Run safe windows message pump.
     loop {
         // Wait for message (blocking).
-        let msg = get_message();
-
-        // Handle message.
-        match msg {
-            | Some(msg) => {
+        if let Ok(msg) = get_message() {
+            if let Some(msg) = msg {
+                // Handle message.
                 translate_message(&msg);
                 dispatch_message(&msg);
+            } else {
+                return; // Return on WM_QUIT.
             }
-            | _ => break, // Quit if WM_Quit or error.
-        };
+        } else {
+            return; // Return on error.
+        }
     }
 }
