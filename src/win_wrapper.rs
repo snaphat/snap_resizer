@@ -1,6 +1,5 @@
 #![macro_use]
 extern crate winapi;
-use mem::MaybeUninit;
 use std::io::Error;
 use std::mem;
 use std::mem::size_of;
@@ -335,18 +334,11 @@ pub fn get_titlebar_info(hwnd: HWND) -> Result<TITLEBARINFO, Error> {
 
 // Safe API to set window position. Takes in screen relative coordinates.
 pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, Error> {
-    // Run windows API to get client area and return the return value and rect.
-    let (ret, client) = unsafe {
-        let mut _rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-        let ptr = &_rect as *const RECT as LPRECT;
-        let ret = GetWindowRect(hwnd, ptr);
-        (ret, _rect)
+    // Run windows API to get client (inner frame) coordinates and return client RECT.
+    let client = match get_window_rect(hwnd) {
+        | Ok(ret) => ret,              // Unwrap frame.
+        | Err(err) => return Err(err), // Most likely an invalid handle.
     };
-
-    // Make sure return value was valid.
-    if ret == 0 {
-        return Err(Error::last_os_error());
-    }
 
     // Run windows API to get frame and return frame RECT.
     let frame = match get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS) {
