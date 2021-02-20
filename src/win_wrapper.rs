@@ -57,7 +57,7 @@ macro_rules! msgbox {
 }
 
 // API for msgbox macro.
-pub fn _msgbox(title: &str, msg: &str) -> Result<i32, Error> {
+pub fn _msgbox(title: &str, msg: &str) -> Result<i32, String> {
     use std::ffi::OsStr;
     use std::iter::once;
     use std::os::windows::ffi::OsStrExt;
@@ -66,7 +66,7 @@ pub fn _msgbox(title: &str, msg: &str) -> Result<i32, Error> {
     let ret = unsafe { MessageBoxW(ptr::null_mut(), msg.as_ptr(), title.as_ptr(), MB_OK) };
 
     match ret {
-        | 0 => Err(Error::last_os_error()),
+        | 0 => Err(Error::last_os_error().to_string()),
         | _ => Ok(ret),
     }
 }
@@ -158,26 +158,26 @@ pub fn is_window_iconic(hwnd: HWND) -> bool {
 }
 
 // Safe API to retrieve whether a window is minimized.
-pub fn is_window_minimized(hwnd: HWND) -> Result<bool, Error> {
+pub fn is_window_minimized(hwnd: HWND) -> Result<bool, String> {
     // Call API.
     let ret = get_window_placement(hwnd);
 
     // Check for errors.
     match ret {
         | Ok(ret) => Ok(ret.showCmd == SW_SHOWMINIMIZED as u32), // Return wrapped bool.
-        | Err(ret) => Err(ret),                                  // Most likely an invalid handle.
+        | Err(err) => Err(err),                                  // Most likely an invalid handle.
     }
 }
 
 // Safe API to retrieve whether a window is maximized.
-pub fn is_window_maximized(hwnd: HWND) -> Result<bool, Error> {
+pub fn is_window_maximized(hwnd: HWND) -> Result<bool, String> {
     // Call API.
     let ret = get_window_placement(hwnd);
 
     // Check for errors.
     match ret {
         | Ok(ret) => Ok(ret.showCmd == SW_SHOWMAXIMIZED as u32), // Return wrapped bool.
-        | Err(ret) => Err(ret),                                  // Most likely an invalid handle.
+        | Err(err) => Err(err),                                  // Most likely an invalid handle.
     }
 }
 
@@ -191,22 +191,12 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
 // Safe API to retrieve window cloaked state.
 pub fn is_window_cloaked(hwnd: HWND) -> Result<bool, String> {
     // Fill type.
-    let mut is_cloaked = 0;
+    let ret = get_window_attribute::<i32>(hwnd, DWMWA_CLOAKED);
 
-    // Call API.
-    let ret = unsafe {
-        DwmGetWindowAttribute(
-            hwnd,
-            DWMWA_CLOAKED,
-            &mut is_cloaked as *const _ as LPVOID, // coerce pointer.
-            size_of::<i32>() as u32,
-        )
-    };
-
-    // Check for errors. HRESULT of non-zero is an error. Good luck decoding this.
+    // Check for errors.
     match ret {
-        | winerror::S_OK => Ok(is_cloaked != 0), // Return wrapped bool.
-        | _ => Err(format!("Returned HRESULT: 0x{:x}", ret)), // Most likely an invalid handle.
+        | Ok(ret) => Ok(ret != 0), // Return wrapped bool.
+        | Err(err) => Err(err),    // Most likely an invalid handle.
     }
 }
 
@@ -218,14 +208,14 @@ pub fn get_window(hwnd: HWND, cmd: UINT) -> HWND {
 }
 
 //Safe API to retrieve information for the specified window.
-pub fn get_window_long(hwnd: HWND, n_index: i32) -> Result<DWORD, Error> {
+pub fn get_window_long(hwnd: HWND, n_index: i32) -> Result<DWORD, String> {
     // Call API.
     let ret = unsafe { GetWindowLongW(hwnd, n_index) };
 
     // Check for Errors.
     match ret {
-        | 0 => Err(Error::last_os_error()), // Most likely an invalid handle.
-        | _ => Ok(ret as u32),              // Return wrapped LONG as a DWORD (bitfield).
+        | 0 => Err(Error::last_os_error().to_string()), // Most likely an invalid handle.
+        | _ => Ok(ret as u32), // Return wrapped LONG as a DWORD (bitfield).
     }
 }
 
@@ -236,7 +226,7 @@ pub fn get_window_ancestor(hwnd: HWND, flags: UINT) -> HWND {
     unsafe { GetAncestor(hwnd, flags) }
 }
 
-pub fn get_window_placement(hwnd: HWND) -> Result<WINDOWPLACEMENT, Error> {
+pub fn get_window_placement(hwnd: HWND) -> Result<WINDOWPLACEMENT, String> {
     // Fill structure.
     let mut wp = WINDOWPLACEMENT {
         flags: 0,
@@ -252,14 +242,14 @@ pub fn get_window_placement(hwnd: HWND) -> Result<WINDOWPLACEMENT, Error> {
 
     // Check for Errors.
     match ret {
-        | 0 => Err(Error::last_os_error()), // Most likely an invalid handle.
-        | _ => Ok(wp),                      // Return wrapped WINDOWPLACEMENT information.
+        | 0 => Err(Error::last_os_error().to_string()), // Most likely an invalid handle.
+        | _ => Ok(wp), // Return wrapped WINDOWPLACEMENT information.
     }
 }
 
 // Safe API to retrieve window attributes.
 // Unsafe for unexpected types.
-pub fn get_window_attribute<T>(hwnd: HWND, dw_attribute: DWORD) -> Result<T, Error> {
+pub fn get_window_attribute<T>(hwnd: HWND, dw_attribute: DWORD) -> Result<T, String> {
     // Initialize unknown type to zero.
     let mut pv_attribute = unsafe { mem::MaybeUninit::<T>::zeroed().assume_init() };
 
@@ -275,34 +265,34 @@ pub fn get_window_attribute<T>(hwnd: HWND, dw_attribute: DWORD) -> Result<T, Err
         (ret, pv_attribute)
     };
 
-    // Check for Errors.
+    // Check for Errors. HRESULT of non-zero is an error. Good luck decoding this.
     match ret {
         | winerror::S_OK => Ok(pv_attribute), // Wrapped attribute.
-        | _ => Err(Error::last_os_error()), // an invalid handle, or type size for the given attribute?
+        | _ => Err(format!("Returned HRESULT: 0x{:x}", ret)), // an invalid handle, or type size for the given attribute?
     }
 }
 
 // Safe API to get window position. Returns screen relative coordinates.
-pub fn get_window_rect(hwnd: HWND) -> Result<RECT, Error> {
+pub fn get_window_rect(hwnd: HWND) -> Result<RECT, String> {
     // Call API.
     let ret = get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS);
 
     // Check for Errors.
     match ret {
-        | Ok(rect) => Ok(rect),             // Return wrapped RECT.
-        | _ => Err(Error::last_os_error()), // Most likely an invalid handle.
+        | Ok(rect) => Ok(rect), // Return wrapped RECT.
+        | err => err,           // Most likely an invalid handle.
     }
 }
 
 // Safe API to set the current process as DPI aware.
-pub fn set_process_dpi_aware_context(ctx: DPI_AWARENESS_CONTEXT) -> Result<bool, Error> {
+pub fn set_process_dpi_aware_context(ctx: DPI_AWARENESS_CONTEXT) -> Result<bool, String> {
     // Call API.
     let ret = unsafe { SetProcessDpiAwarenessContext(ctx) };
 
     // Check for Errors.
     match ret != 0 {
-        | false => Err(Error::last_os_error()), // Most likely an invalid handle.
-        | true => Ok(true),                     // Return wrapped true on success.
+        | false => Err(Error::last_os_error().to_string()), // Most likely an invalid handle.
+        | true => Ok(true),                                 // Return wrapped true on success.
     }
 }
 
@@ -314,7 +304,7 @@ pub fn get_last_active_popup(hwnd: HWND) -> HWND {
 }
 
 // Safe API to retrieve title bar information for the specified titlebar.
-pub fn get_titlebar_info(hwnd: HWND) -> Result<TITLEBARINFO, Error> {
+pub fn get_titlebar_info(hwnd: HWND) -> Result<TITLEBARINFO, String> {
     // Fill structure.
     let mut ti: TITLEBARINFO = TITLEBARINFO {
         cbSize: size_of::<TITLEBARINFO>() as u32,
@@ -327,13 +317,13 @@ pub fn get_titlebar_info(hwnd: HWND) -> Result<TITLEBARINFO, Error> {
 
     // Check for Errors.
     match ret {
-        | 0 => Err(Error::last_os_error()), // Most likely an invalid handle.
-        | _ => Ok(ti),                      // Return wrapped TITLEBARINFO.
+        | 0 => Err(Error::last_os_error().to_string()), // Most likely an invalid handle.
+        | _ => Ok(ti),                                  // Return wrapped TITLEBARINFO.
     }
 }
 
 // Safe API to set window position. Takes in screen relative coordinates.
-pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, Error> {
+pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
     // Run windows API to get client (inner frame) coordinates and return client RECT.
     let client = match get_window_rect(hwnd) {
         | Ok(ret) => ret,              // Unwrap frame.
@@ -368,7 +358,7 @@ pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, Error> {
 
     // Make sure the return value was valid before returning.
     match ret {
-        | 0 => Err(Error::last_os_error()),
+        | 0 => Err(Error::last_os_error().to_string()),
         | _ => Ok(ret),
     }
 }
