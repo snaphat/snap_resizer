@@ -38,7 +38,7 @@ fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
     }
 
     // Get bounds of enumerated window.
-    if let Ok(o_rect) = get_window_rect(o_hwnd) {
+    if let Ok(o_rect) = get_window_frame_rect(o_hwnd) {
         //
         let a = unsafe {
             let mut a: winapi::shared::minwindef::DWORD = 0;
@@ -91,7 +91,7 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
     }
 
     // Retrieve bounds for the moved window or return if failed.
-    let m_rect = get_window_rect(m_hwnd);
+    let m_rect = get_window_frame_rect(m_hwnd);
     match m_rect {
         | Ok(m_rect) => {
             // Setup closure for EnumWindow callback. Done this way for readability.

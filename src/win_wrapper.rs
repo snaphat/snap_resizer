@@ -257,8 +257,27 @@ pub fn get_window_attribute<T>(hwnd: HWND, dw_attribute: DWORD) -> Result<T, Str
     }
 }
 
-// Safe API to get window position. Returns screen relative coordinates.
+// Safe API to get window frame position (client area). Returns screen relative coordinates.
 pub fn get_window_rect(hwnd: HWND) -> Result<RECT, String> {
+    // Initialize unknown type to zero.
+    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+
+    // Call API.
+    let (ret, client) = unsafe {
+        let ptr = &mut rect as *const RECT as LPRECT;
+        let ret = GetWindowRect(hwnd, ptr);
+        (ret, rect)
+    };
+
+    // Check for Errors.
+    match ret {
+        | 0 => Err(Error::last_os_error().to_string()), // Most likely an invalid handle.
+        | _ => Ok(client),                              // Return wrapped RECT.
+    }
+}
+
+// Safe API to get window outer frame position. Returns screen relative coordinates.
+pub fn get_window_frame_rect(hwnd: HWND) -> Result<RECT, String> {
     // Call API or return Error.
     let rect = get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS)?; // Most likely an invalid handle.
 
@@ -311,7 +330,7 @@ pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
 
     // Run windows API to get frame and return frame RECT.
     // An error result is most likely an invalid handle.
-    let frame = get_window_attribute::<RECT>(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS)?;
+    let frame = get_window_frame_rect(hwnd)?;
 
     // Compute borders from frame and client.
     let mut border = RECT { left: 0, top: 0, right: 0, bottom: 0 };
@@ -319,6 +338,8 @@ pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
     border.top = frame.top - client.top;
     border.right = client.right - frame.right;
     border.bottom = client.bottom - frame.bottom;
+
+    println!("borders {} {} {} {}", border.left, border.top, border.right, border.bottom);
 
     // Adjust  because the windows API for setting position is stupid and not screen relative.
     let ret = unsafe {
@@ -353,8 +374,7 @@ where
 
     // C-compatible EnumWindows callback to call closure.
     extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let func: &mut &mut dyn FnMut(HWND) -> i32 =
-            unsafe { &mut *(lparam as *mut LPARAM as *mut _) }; // coerce pointer inverse.
+        let func: &mut &mut dyn FnMut(HWND) -> i32 = unsafe { &mut *(lparam as *mut _) }; // coerce pointer inverse.
 
         return func(hwnd); // Call closure
     }
