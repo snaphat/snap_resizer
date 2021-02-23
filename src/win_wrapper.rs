@@ -1,9 +1,11 @@
 #![macro_use]
 extern crate winapi;
 use std::io::Error;
+use std::lazy::SyncLazy;
 use std::mem;
 use std::mem::size_of;
 use std::ptr;
+use std::{collections::hash_map::HashMap, sync::RwLock};
 use winapi::shared::minwindef::*;
 use winapi::shared::windef::*;
 use winapi::shared::*;
@@ -70,79 +72,47 @@ pub fn _msgbox(title: &str, msg: &str) -> Result<i32, String> {
 
 // Safe API to check if a window shows on the taskbar.
 pub fn is_taskbar_window(hwnd: HWND) -> bool {
-    // Invisible windows do not show on the taskbar..
-    if !is_window_visible(hwnd) {
-        return false;
-    }
+    // Invisible windows do not show on the taskbar.
+    match is_window_visible(hwnd) {
+        | false => return false, // Invisible.
+        | true => (),            // Visible.
+    };
 
     // Cloaked windows do not show on the taskbar.
-    if let Ok(ret) = is_window_cloaked(hwnd) {
-        if ret == true {
-            return false;
-        }
-    } else {
-        return false; // Drop-out if API call failed.
+    match is_window_cloaked(hwnd) {
+        | Ok(ret) if ret != false => return false, // Cloaked.
+        | Ok(_) => (),                             // Not Cloaked.
+        | Err(_) => return false,                  // Drop-out if API call failed.
+    };
+
+    // Check Windows Extended style: App windows alway show on the task bar and normal and no-active windows do not.
+    // Note: no-active windows can show in the taskbar if WS_EX_APPWINDOW is set, hence the order.
+    match get_window_long(hwnd, GWL_EXSTYLE) {
+        | Ok(ret) if ret & WS_EX_APPWINDOW != 0 => return true, // App Window
+        | Ok(ret) if ret & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) != 0 => return false, // Tool or no-active window.
+        | Ok(_) => (), // Need more checks to determine if the window should be displayed.
+        | Err(_) => return false, // Drop-out if API call failed.
     }
 
-    // Check Window Extended Style
-    if let Ok(ret) = get_window_long(hwnd, GWL_EXSTYLE) {
-        // App Windows always show on the taskbar when visible.
-        if ret & WS_EX_APPWINDOW != 0 {
-            return true;
-        }
-        // Tool windows and no-activate windows do not show on the taskbar.
-        // Note: no-active windows can show in the taskbar if WS_EX_APPWINDOW is set.
-        if ret & (WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) != 0 {
-            return false;
-        }
-    } else {
-        return false; // Drop-out if API call failed.
-    }
-
-    // Check Window Style
-    if let Ok(ret) = get_window_long(hwnd, GWL_STYLE) {
-        // Child windows do not show on the taskbar.
-        if ret & WS_CHILD != 0 {
-            return false;
-        }
-    } else {
-        return false; // Drop-out if API call failed.
+    // Check Window Style: Child windows do not show on the task bar.
+    match get_window_long(hwnd, GWL_STYLE) {
+        | Ok(ret) if ret & WS_CHILD != 0 => return false, // Child window.
+        | Ok(_) => (),                                    // Not child window.
+        | Err(_) => return false,                         // Drop-out if API call failed.
     }
 
     // Windows with owner's do not appear on the taskbar.
-    if get_window(hwnd, GW_OWNER) as u32 != 0 {
-        return false;
-    }
+    match get_window(hwnd, GW_OWNER) as u32 {
+        | 0 => (),           // No owner.
+        | _ => return false, // An owner.
+    };
 
     // Windows with invisible titlebars do not appear on the taskbar.
-    if let Ok(ti) = get_titlebar_info(hwnd) {
-        if ti.rgstate[0] & STATE_SYSTEM_INVISIBLE != 0 {
-            return false;
-        }
-    } else {
-        return false; // Drop-out if API call failed.
-    }
-
-    // See: https://web.archive.org/web/20190217140538/https://blogs.msdn.microsoft.com/oldnewthing/20071008-00/?p=24863
-    // Quote from Raymond Cen (MSFT):
-    // For each visible window, walk up its owner chain until you find the root owner.
-    // Then walk back down the visible last active popup chain until you find a visible window.
-    // If you're back to where you're started, then put the window in the Alt+Tab list:
-    {
-        let hwnd_walk;
-        let mut hwnd_try = get_window_ancestor(hwnd, GA_ROOTOWNER);
-        loop {
-            hwnd_walk = hwnd_try;
-            hwnd_try = get_last_active_popup(hwnd_walk);
-            if is_window_visible(hwnd_try) || hwnd_walk == hwnd_try {
-                break;
-            }
-            break;
-        }
-        if hwnd_walk != hwnd {
-            return false; // Window isn't a root window.
-        }
-    }
+    match get_titlebar_info(hwnd) {
+        | Ok(ti) if ti.rgstate[0] & STATE_SYSTEM_INVISIBLE != 0 => return false, // Invisible titlebar.
+        | Ok(_) => (),            // Visible titlebar.
+        | Err(_) => return false, // Drop-out if API call failed.
+    };
 
     return true; // Appears to be an taskbar window.
 }
@@ -211,6 +181,7 @@ pub fn get_window_ancestor(hwnd: HWND, flags: UINT) -> HWND {
     unsafe { GetAncestor(hwnd, flags) }
 }
 
+// Safe API to retrieve window placement.
 pub fn get_window_placement(hwnd: HWND) -> Result<WINDOWPLACEMENT, String> {
     // Fill structure.
     let mut wp = WINDOWPLACEMENT {
@@ -339,8 +310,6 @@ pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
     border.right = client.right - frame.right;
     border.bottom = client.bottom - frame.bottom;
 
-    println!("borders {} {} {} {}", border.left, border.top, border.right, border.bottom);
-
     // Adjust  because the windows API for setting position is stupid and not screen relative.
     let ret = unsafe {
         SetWindowPos(
@@ -363,21 +332,20 @@ pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
 
 // Safe API to enumerate windows.
 // Takes a closure.
-pub fn enum_windows<F>(mut func: F)
+pub fn enum_windows<F>(func: F)
 where
-    F: FnMut(HWND) -> i32,
+    F: Fn(HWND) -> i32,
 {
-    // Implement trait to pass closure as lparam (unsafely).
-    // See: https://stackoverflow.com/questions/38995701/how-do-i-pass-a-closure-through-raw-pointers-as-an-argument-to-a-c-function
-    let mut trait_obj: &mut dyn FnMut(HWND) -> i32 = &mut func;
-    let lparam = &mut trait_obj as *mut _ as LPARAM; // coerce pointer.
-
     // C-compatible EnumWindows callback to call closure.
     extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let func: &mut &mut dyn FnMut(HWND) -> i32 = unsafe { &mut *(lparam as *mut _) }; // coerce pointer inverse.
+        let func: &&dyn Fn(HWND) -> i32 = unsafe { &*(lparam as *const _) }; // coerce pointer inverse.
 
         return func(hwnd); // Call closure
     }
+
+    // Implement trait to pass closure as lparam.
+    let trait_obj: &dyn Fn(HWND) -> i32 = &func;
+    let lparam = &trait_obj as *const _ as LPARAM; // coerce pointer.
 
     // Run Callback API.
     let callback: WNDENUMPROC = Some(enum_windows_callback);
@@ -386,38 +354,63 @@ where
     }
 }
 
-// Static variable to hold our closure event hook handler.
-static mut HANDLER: Option<Box<dyn FnMut(DWORD, HWND, LONG)>> = None;
+// The following code is a kludge to safely pass data via closures to the SetWinEventHook() API.
+// This is necessary because the API does not allow passing of user provided data (such as
+// a closure environment, and utilizes an ABI that Rust closures cannot be directly called from.
+//
+// Implemented is a static lookup table operating as a trampoline for Fn handlers.
+// These are looked up by unique HWINEVENTHOOK id and called from within a stub a
+// WINEVENTPROC handler function (implemented below).
+
+// Declare some traits and types for less verbose code below.
+pub trait FnHook = Fn(usize, DWORD, HWND, LONG, LONG, DWORD, DWORD) + 'static + Send + Sync;
+type FnHookBox = Box<dyn FnHook>;
+
+// Multiple reader, single writer lock implementation.
+// Maps: Unique HWINEVENTHOOK ID -> Fn(...)
+static EVENT_HOOK_MAP: SyncLazy<RwLock<HashMap<usize, FnHookBox>>> =
+    SyncLazy::new(|| RwLock::new(HashMap::new()));
 
 // Safe API to setup callbacks to listen for events.
-// Takes a closure.
-pub fn set_win_event_hook<F>(func: F, event_min: UINT, event_max: UINT) -> bool
+// Takes a closure and windows event constants.
+pub fn set_win_event_hook<F>(
+    func: F,
+    event_min: UINT,
+    event_max: UINT,
+) -> Result<HWINEVENTHOOK, String>
 where
-    F: FnMut(DWORD, HWND, LONG) + 'static,
+    F: FnHook,
 {
-    // C-compatible SetWinEventHook callback to call closure.
+    // C-compatible SetWinEventHook callback stub to lookup and call user provided closures.
     extern "system" fn set_win_event_hook_callback(
-        _: HWINEVENTHOOK,
+        h_win_event_hook: HWINEVENTHOOK,
         event: DWORD,
         hwnd: HWND,
-        _: LONG,
+        id_object: LONG,
         id_child: LONG,
-        _: DWORD,
-        _: DWORD,
+        id_event_thread: DWORD,
+        dwms_event_time: DWORD,
     ) {
-        // Unwrap actual closure handler and pass in arguments.
-        unsafe {
-            if let Some(func) = &mut HANDLER {
+        //Guard actual closure handler for multiple read access and pass in arguments.
+        if let Ok(guard) = EVENT_HOOK_MAP.read() {
+            let map = &*guard; // Get a reference to the map which is guaranteed to be initialized.
+            if let Some(func) = map.get(&(h_win_event_hook as usize)) {
                 // Call closure.
-                func(event as u32, hwnd, id_child as i32);
+                func(
+                    h_win_event_hook as usize,
+                    event,
+                    hwnd,
+                    id_object,
+                    id_child,
+                    id_event_thread,
+                    dwms_event_time,
+                );
             }
-        };
+        }
     }
 
+    // Call API.
     let hook = unsafe {
-        // This callback hook passes no user arguments so we cannot pass the closure to it.
-        // Therefore we setup the closure as a handler via global memory (unsafely).
-        HANDLER = Some(Box::new(func));
         SetWinEventHook(
             event_min,
             event_max,
@@ -428,5 +421,15 @@ where
             WINEVENT_OUTOFCONTEXT,
         )
     };
-    !hook.is_null()
+
+    match hook {
+        | hook if hook.is_null() => Err("Failed to setup event hook!".to_string()), // Failed to setup a hook.
+        | hook => {
+            // Acquire single-writer lock for safely adding a new entry to our closure lookup table.
+            // We lock after setting up the stub callback because we can safely miss intransit events.
+            // The lookup will simply fail and teh callback will return.
+            EVENT_HOOK_MAP.write().unwrap().insert(hook as usize, Box::new(func));
+            Ok(hook)
+        } // Return wrapped hook.
+    }
 }

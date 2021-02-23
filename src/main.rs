@@ -1,3 +1,5 @@
+#![feature(once_cell)]
+#![feature(trait_alias)]
 #[cfg(windows)]
 mod win_wrapper;
 use win_wrapper::*;
@@ -113,12 +115,12 @@ fn main() {
     }
 
     // Setup closure for event hook. Done this way for readability.
-    let func = |event, m_hwnd, id_child| {
-        event_handler(event, m_hwnd, id_child);
+    let func = |_, event, hwnd, _, id_child, _, _| {
+        event_handler(event, hwnd, id_child);
     };
 
     // Setup hook.
-    if set_win_event_hook(func, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND) == false {
+    if let Err(_) = set_win_event_hook(func, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND) {
         msgbox!("Err", "Failed to set move/resize event hook!");
         return;
     }
