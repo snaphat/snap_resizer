@@ -107,7 +107,15 @@ fn main() {
     };
 
     // Setup hook.
-    if let Err(err) = set_win_event_hook(func, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND) {
+    if let Err(err) = set_win_event_hook(
+        EVENT_SYSTEM_MOVESIZEEND,
+        EVENT_SYSTEM_MOVESIZEEND,
+        0 as HINSTANCE,
+        func,
+        0,
+        0,
+        WINEVENT_OUTOFCONTEXT,
+    ) {
         msgbox!("Error", "{}", err);
         return;
     }
