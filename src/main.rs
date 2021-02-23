@@ -110,8 +110,8 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
 
 fn main() {
     // Set the process as DPI aware.
-    if let Err(ret) = set_process_dpi_aware_context(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) {
-        println!("{}", ret);
+    if let Err(err) = set_process_dpi_aware_context(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) {
+        println!("{}", err);
     }
 
     // Setup closure for event hook. Done this way for readability.
@@ -120,8 +120,8 @@ fn main() {
     };
 
     // Setup hook.
-    if let Err(_) = set_win_event_hook(func, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND) {
-        msgbox!("Err", "Failed to set move/resize event hook!");
+    if let Err(err) = set_win_event_hook(func, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND) {
+        println!("{}", err);
         return;
     }
 

@@ -16,10 +16,23 @@ use winapi::um::winuser::*;
 
 pub type HWND = windef::HWND;
 pub type RECT = windef::RECT;
+pub type HWINEVENTHOOK = windef::HWINEVENTHOOK;
+
 //pub const EVENT_SYSTEM_MOVESIZESTART: UINT = winuser:: EVENT_SYSTEM_MOVESIZESTART;
 pub const EVENT_SYSTEM_MOVESIZEEND: UINT = winuser::EVENT_SYSTEM_MOVESIZEEND;
+
+pub const DPI_AWARENESS_CONTEXT_UNAWARE: DPI_AWARENESS_CONTEXT =
+    windef::DPI_AWARENESS_CONTEXT_UNAWARE;
 pub const DPI_AWARENESS_CONTEXT_SYSTEM_AWARE: DPI_AWARENESS_CONTEXT =
     windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE;
+pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE: DPI_AWARENESS_CONTEXT =
+    windef::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE;
+
+pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: DPI_AWARENESS_CONTEXT =
+    windef::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
+
+pub const DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED: DPI_AWARENESS_CONTEXT =
+    windef::DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED;
 
 // Safe API to retrieve Windows Messages. Returns None on WM_QUIT result.
 pub fn get_message() -> Result<Option<MSG>, String> {
@@ -278,7 +291,7 @@ pub fn get_last_active_popup(hwnd: HWND) -> HWND {
 pub fn get_titlebar_info(hwnd: HWND) -> Result<TITLEBARINFO, String> {
     // Fill structure.
     let mut ti: TITLEBARINFO = TITLEBARINFO {
-        cbSize: size_of::<TITLEBARINFO>() as u32,
+        cbSize: size_of::<TITLEBARINFO>() as u32, // size must be set before calling GetTitleBarInfo.
         rcTitleBar: RECT { left: 0, top: 0, right: 0, bottom: 0 },
         rgstate: [0; 6],
     };
@@ -330,21 +343,24 @@ pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
     }
 }
 
+// Required trait for closures passed to enum_windows.
+pub trait FnEnum = Fn(HWND) -> i32;
+
 // Safe API to enumerate windows.
 // Takes a closure.
 pub fn enum_windows<F>(func: F)
 where
-    F: Fn(HWND) -> i32,
+    F: FnEnum,
 {
     // C-compatible EnumWindows callback to call closure.
     extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
-        let func: &&dyn Fn(HWND) -> i32 = unsafe { &*(lparam as *const _) }; // coerce pointer inverse.
+        let func: &&dyn FnEnum = unsafe { &*(lparam as *const _) }; // coerce pointer inverse.
 
         return func(hwnd); // Call closure
     }
 
     // Implement trait to pass closure as lparam.
-    let trait_obj: &dyn Fn(HWND) -> i32 = &func;
+    let trait_obj: &dyn FnEnum = &func;
     let lparam = &trait_obj as *const _ as LPARAM; // coerce pointer.
 
     // Run Callback API.
@@ -362,13 +378,12 @@ where
 // These are looked up by unique HWINEVENTHOOK id and called from within a stub a
 // WINEVENTPROC handler function (implemented below).
 
-// Declare some traits and types for less verbose code below.
+// Required trait for closures passed to set_win_event_hook_callback.
 pub trait FnHook = Fn(usize, DWORD, HWND, LONG, LONG, DWORD, DWORD) + 'static + Send + Sync;
-type FnHookBox = Box<dyn FnHook>;
 
 // Multiple reader, single writer lock implementation.
 // Maps: Unique HWINEVENTHOOK ID -> Fn(...)
-static EVENT_HOOK_MAP: SyncLazy<RwLock<HashMap<usize, FnHookBox>>> =
+static EVENT_HOOK_MAP: SyncLazy<RwLock<HashMap<usize, Box<dyn FnHook>>>> =
     SyncLazy::new(|| RwLock::new(HashMap::new()));
 
 // Safe API to setup callbacks to listen for events.
@@ -431,5 +446,20 @@ where
             EVENT_HOOK_MAP.write().unwrap().insert(hook as usize, Box::new(func));
             Ok(hook)
         } // Return wrapped hook.
+    }
+}
+
+// Safe API to unhook event listeners.
+pub fn unhook_win_event(h_win_even_hook: HWINEVENTHOOK) -> Result<bool, String> {
+    // Call API.
+    let ret = unsafe { UnhookWinEvent(h_win_even_hook) };
+
+    // Remove entry from lookup table.
+    EVENT_HOOK_MAP.write().unwrap().remove(&(h_win_even_hook as usize));
+
+    // Check for Errors.
+    match ret != 0 {
+        | false => Err(Error::last_os_error().to_string()), // Most likely an invalid handle.
+        | true => Ok(true),                                 // Return wrapped true on success.
     }
 }
