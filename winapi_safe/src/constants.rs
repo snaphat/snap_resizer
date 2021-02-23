@@ -12,10 +12,6 @@ macro_rules! pub_const {
     };
 }
 
-pub fn tester() {
-    ()
-}
-
 // Consts... lol
 pub_const!(windef::DPI_AWARENESS_CONTEXT_UNAWARE: DPI_AWARENESS_CONTEXT);
 pub_const!(windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE: DPI_AWARENESS_CONTEXT);
