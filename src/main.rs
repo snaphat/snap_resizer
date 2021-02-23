@@ -31,7 +31,7 @@ fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
     // Get bounds of enumerated window.
     if let Ok(o_rect) = get_window_frame_rect(o_hwnd) {
         //
-        let (thread_id, process_id) = get_window_thread_process_id(1 as HWND);
+        let (thread_id, process_id) = get_window_thread_process_id(o_hwnd as HWND);
         println!(
             "{:?} {} {} {} {} id t:{} p:{}",
             o_hwnd, o_rect.left, o_rect.top, o_rect.right, o_rect.bottom, thread_id, process_id
@@ -87,7 +87,9 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
             println!("\n========\n");
 
             // Enumerate windows.
-            enum_windows(enum_closure);
+            if let Err(err) = enum_windows(enum_closure) {
+                println!("{}", err)
+            }
         }
         | Err(err) => println!("{}", err),
     };

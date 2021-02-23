@@ -352,7 +352,7 @@ pub trait FnEnum = Fn(HWND) -> i32;
 
 // Safe API to enumerate windows.
 // Takes a closure.
-pub fn enum_windows<F>(func: F)
+pub fn enum_windows<F>(func: F) -> Result<bool, String>
 where
     F: FnEnum,
 {
@@ -369,8 +369,12 @@ where
 
     // Run Callback API.
     let callback: WNDENUMPROC = Some(enum_windows_callback);
-    unsafe {
-        EnumWindows(callback, lparam);
+    let ret = unsafe { EnumWindows(callback, lparam) };
+
+    // Make sure the return value was valid before returning.
+    match ret {
+        | 0 => Err(Error::last_os_error().to_string()),
+        | _ => Ok(true),
     }
 }
 
