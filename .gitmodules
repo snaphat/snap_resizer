@@ -1,0 +1,3 @@
+[submodule "winapi_safe"]
+	path = winapi_safe
+	url = git@github.com:snaphat/winapi_safe.git
