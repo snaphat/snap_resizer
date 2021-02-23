@@ -16,6 +16,7 @@ use winapi::shared::minwindef::*;
 use winapi::shared::windef::*;
 use winapi::shared::*;
 use winapi::um::dwmapi::*;
+use winapi::um::errhandlingapi::*;
 use winapi::um::winnt::*;
 use winapi::um::winuser::*;
 
@@ -49,6 +50,11 @@ pub fn translate_message(msg: *const MSG) {
 // Safe API to dispatch Windows Messages.
 pub fn dispatch_message(msg: *const MSG) {
     unsafe { DispatchMessageW(msg) };
+}
+
+// Safe API to retrieve OS errors .
+pub fn get_last_error() -> DWORD {
+    return unsafe { GetLastError() };
 }
 
 // Safe API to retrieve the identifier of the thread and process that created the specified window.
@@ -279,8 +285,8 @@ pub fn set_process_dpi_aware_context(ctx: DPI_AWARENESS_CONTEXT) -> Result<bool,
 
     // Check for Errors.
     match ret != 0 {
+        | true => Ok(true), // Return wrapped true on success.
         | false => Err(Error::last_os_error().to_string()), // Most likely an invalid handle.
-        | true => Ok(true),                                 // Return wrapped true on success.
     }
 }
 
@@ -347,7 +353,7 @@ pub fn set_window_pos(hwnd: HWND, rect: RECT) -> Result<i32, String> {
     }
 }
 
-// Required trait for closures passed to enum_windows.
+// Required trait for closures passed to enum_windows and enum_thread_windows.
 pub trait FnEnum = Fn(HWND) -> i32;
 
 // Safe API to enumerate windows.
@@ -373,8 +379,96 @@ where
 
     // Make sure the return value was valid before returning.
     match ret {
-        | 0 => Err(Error::last_os_error().to_string()),
-        | _ => Ok(true),
+        | 0 if get_last_error() == 0 => Ok(false), // Return wrapped false if not an error.
+        | 0 => Err(Error::last_os_error().to_string()), // Return wrapped error if OS error.
+        | _ => Ok(true),                           // Return true otherwise.
+    }
+}
+
+// Safe API to enumerate all child windows that belong to the specified parent window window.
+// Takes a closure.
+pub fn enum_child_windows<F>(hwnd_parent: HWND, func: F) -> Result<bool, String>
+where
+    F: FnEnum,
+{
+    // C-compatible EnumWindows callback to call closure.
+    extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let func: &&dyn FnEnum = unsafe { &*(lparam as *const _) }; // coerce pointer inverse.
+
+        return func(hwnd); // Call closure
+    }
+
+    // Implement trait to pass closure as lparam.
+    let trait_obj: &dyn FnEnum = &func;
+    let lparam = &trait_obj as *const _ as LPARAM; // coerce pointer.
+
+    // Run Callback API.
+    let callback: WNDENUMPROC = Some(enum_windows_callback);
+    let ret = unsafe { EnumChildWindows(hwnd_parent, callback, lparam) };
+
+    // Make sure the return value was valid before returning.
+    match ret {
+        | 0 if get_last_error() == 0 => Ok(false), // Return wrapped false if not an error.
+        | 0 => Err(Error::last_os_error().to_string()), // Return wrapped error if OS error.
+        | _ => Ok(true),                           // Return true otherwise.
+    }
+}
+
+// Safe API to enumerate all top-level windows associated with the specified desktop.
+// Takes a closure.
+pub fn enum_desktop_windows<F>(h_desktop: HDESK, func: F) -> Result<bool, String>
+where
+    F: FnEnum,
+{
+    // C-compatible EnumWindows callback to call closure.
+    extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let func: &&dyn FnEnum = unsafe { &*(lparam as *const _) }; // coerce pointer inverse.
+
+        return func(hwnd); // Call closure
+    }
+
+    // Implement trait to pass closure as lparam.
+    let trait_obj: &dyn FnEnum = &func;
+    let lparam = &trait_obj as *const _ as LPARAM; // coerce pointer.
+
+    // Run Callback API.
+    let callback: WNDENUMPROC = Some(enum_windows_callback);
+    let ret = unsafe { EnumDesktopWindows(h_desktop, callback, lparam) };
+
+    // Make sure the return value was valid before returning.
+    match ret {
+        | 0 if get_last_error() == 0 => Ok(false), // Return wrapped false if not an error.
+        | 0 => Err(Error::last_os_error().to_string()), // Return wrapped error if OS error.
+        | _ => Ok(true),                           // Return true otherwise.
+    }
+}
+
+// Safe API to enumerate all nonchild windows associated with a thread.
+// Takes a closure.
+pub fn enum_thread_windows<F>(thread_id: DWORD, func: F) -> Result<bool, String>
+where
+    F: FnEnum,
+{
+    // C-compatible EnumWindows callback to call closure.
+    extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let func: &&dyn FnEnum = unsafe { &*(lparam as *const _) }; // coerce pointer inverse.
+
+        return func(hwnd); // Call closure
+    }
+
+    // Implement trait to pass closure as lparam.
+    let trait_obj: &dyn FnEnum = &func;
+    let lparam = &trait_obj as *const _ as LPARAM; // coerce pointer.
+
+    // Run Callback API.
+    let callback: WNDENUMPROC = Some(enum_windows_callback);
+    let ret = unsafe { EnumThreadWindows(thread_id, callback, lparam) };
+
+    // Make sure the return value was valid before returning.
+    match ret {
+        | 0 if get_last_error() == 0 => Ok(false), // Return wrapped false if not an error.
+        | 0 => Err(Error::last_os_error().to_string()), // Return wrapped error if OS error.
+        | _ => Ok(true),                           // Return true otherwise.
     }
 }
 
