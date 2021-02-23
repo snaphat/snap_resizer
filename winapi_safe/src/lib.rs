@@ -467,3 +467,10 @@ pub fn unhook_win_event(h_win_even_hook: HWINEVENTHOOK) -> Result<bool, String> 
         | true => Ok(true),                                 // Return wrapped true on success.
     }
 }
+
+// Safe API to determine whether there is an installed WinEvent hook.
+pub fn is_win_event_hook_installed(event: DWORD) -> bool {
+    let a = unsafe { IsWinEventHookInstalled(event) };
+    println!("{}", a);
+    a != 0
+}
