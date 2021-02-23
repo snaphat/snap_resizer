@@ -12,19 +12,41 @@ use std::mem;
 use std::mem::size_of;
 use std::ptr;
 use std::{collections::hash_map::HashMap, sync::RwLock};
-use winapi::shared::minwindef::*;
-use winapi::shared::windef::*;
 use winapi::shared::*;
 use winapi::um::dwmapi::*;
 use winapi::um::errhandlingapi::*;
+use winapi::um::winnt;
 use winapi::um::winnt::*;
+use winapi::um::winuser;
 use winapi::um::winuser::*;
 
-pub type DWORD = winapi::shared::minwindef::DWORD;
-pub type LPDWORD = winapi::shared::minwindef::LPDWORD;
-pub type HWINEVENTHOOK = windef::HWINEVENTHOOK;
-pub type HWND = windef::HWND;
-pub type RECT = windef::RECT;
+// Shorthand for creating a pub type from winapi types.
+macro_rules! pub_type {
+    ($prefix:tt::$suffix:tt) => {
+        #[allow(warnings)]
+        pub type $suffix = $prefix::$suffix;
+    };
+}
+
+pub_type!(minwindef::BOOL);
+pub_type!(minwindef::DWORD);
+pub_type!(minwindef::LPDWORD);
+pub_type!(minwindef::LPARAM);
+pub_type!(minwindef::LPVOID);
+pub_type!(minwindef::UINT);
+pub_type!(windef::HWINEVENTHOOK);
+pub_type!(windef::DPI_AWARENESS_CONTEXT);
+pub_type!(windef::HDESK);
+pub_type!(windef::HWND);
+pub_type!(windef::POINT);
+pub_type!(windef::RECT);
+pub_type!(windef::LPRECT);
+pub_type!(winnt::HRESULT);
+pub_type!(winuser::MSG);
+pub_type!(winuser::LPMSG);
+pub_type!(winuser::TITLEBARINFO);
+pub_type!(winuser::PTITLEBARINFO);
+pub_type!(winuser::WINDOWPLACEMENT);
 
 // Safe API to retrieve Windows Messages. Returns None on WM_QUIT result.
 pub fn get_message() -> Result<Option<MSG>, String> {
@@ -239,7 +261,7 @@ pub fn get_window_attribute<T>(hwnd: HWND, dw_attribute: DWORD) -> Result<T, Str
             hwnd,
             dw_attribute,
             &mut pv_attribute as *mut _ as LPVOID,
-            size_of::<T>() as u32,
+            size_of::<T>() as DWORD,
         );
         (ret, pv_attribute)
     };
