@@ -6,7 +6,6 @@ version = 3
 name = "snap_resizer"
 version = "0.0.1"
 dependencies = [
- "winapi",
  "winapi_safe",
 ]
 

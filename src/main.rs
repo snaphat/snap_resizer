@@ -1,20 +1,10 @@
-extern crate winapi_safe;
-//mod win_wrapper;
-//use win_wrapper::*;
-use winapi::shared::minwindef::LPDWORD;
+use winapi_safe::constants::*;
 use winapi_safe::*;
 
 const THRESH: i32 = 40;
 
 // Enumerate Windows Handler
 fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
-    // Ignore iconic windows -- same as minimized.
-    /*
-    if is_window_iconic(o_hwnd) {
-        return 1;
-    }
-    */
-
     // Ignore minimized windows.
     if let Ok(ret) = is_window_minimized(o_hwnd) {
         if ret == true {
@@ -41,14 +31,10 @@ fn enum_handler(m_hwnd: HWND, o_hwnd: HWND, mut m_rect: RECT) -> i32 {
     // Get bounds of enumerated window.
     if let Ok(o_rect) = get_window_frame_rect(o_hwnd) {
         //
-        let a = unsafe {
-            let mut a: winapi::shared::minwindef::DWORD = 0;
-            winapi::um::winuser::GetWindowThreadProcessId(o_hwnd, &mut a as *mut _ as LPDWORD);
-            a
-        };
+        let (thread_id, process_id) = get_window_thread_process_id(1 as HWND);
         println!(
-            "{:?} {} {} {} {} id {}",
-            o_hwnd, o_rect.left, o_rect.top, o_rect.right, o_rect.bottom, a
+            "{:?} {} {} {} {} id t:{} p:{}",
+            o_hwnd, o_rect.left, o_rect.top, o_rect.right, o_rect.bottom, thread_id, process_id
         );
 
         // Compare positions and snap windows that are close by.
@@ -110,7 +96,7 @@ fn event_handler(event: u32, m_hwnd: HWND, id_child: i32) {
 fn main() {
     // Set the process as DPI aware.
     if let Err(err) = set_process_dpi_aware_context(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE) {
-        println!("{}", err);
+        msgbox!("Error", "{}", err);
     }
 
     // Setup closure for event hook. Done this way for readability.
@@ -120,7 +106,7 @@ fn main() {
 
     // Setup hook.
     if let Err(err) = set_win_event_hook(func, EVENT_SYSTEM_MOVESIZEEND, EVENT_SYSTEM_MOVESIZEEND) {
-        println!("{}", err);
+        msgbox!("Error", "{}", err);
         return;
     }
 

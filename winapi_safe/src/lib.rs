@@ -3,6 +3,9 @@
 #![feature(trait_alias)]
 #[cfg(windows)]
 extern crate winapi;
+
+pub mod constants;
+
 use std::io::Error;
 use std::lazy::SyncLazy;
 use std::mem;
@@ -14,28 +17,13 @@ use winapi::shared::windef::*;
 use winapi::shared::*;
 use winapi::um::dwmapi::*;
 use winapi::um::winnt::*;
-use winapi::um::winuser;
 use winapi::um::winuser::*;
 
+pub type DWORD = winapi::shared::minwindef::DWORD;
+pub type LPDWORD = winapi::shared::minwindef::LPDWORD;
+pub type HWINEVENTHOOK = windef::HWINEVENTHOOK;
 pub type HWND = windef::HWND;
 pub type RECT = windef::RECT;
-pub type HWINEVENTHOOK = windef::HWINEVENTHOOK;
-
-//pub const EVENT_SYSTEM_MOVESIZESTART: UINT = winuser:: EVENT_SYSTEM_MOVESIZESTART;
-pub const EVENT_SYSTEM_MOVESIZEEND: UINT = winuser::EVENT_SYSTEM_MOVESIZEEND;
-
-pub const DPI_AWARENESS_CONTEXT_UNAWARE: DPI_AWARENESS_CONTEXT =
-    windef::DPI_AWARENESS_CONTEXT_UNAWARE;
-pub const DPI_AWARENESS_CONTEXT_SYSTEM_AWARE: DPI_AWARENESS_CONTEXT =
-    windef::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE;
-pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE: DPI_AWARENESS_CONTEXT =
-    windef::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE;
-
-pub const DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: DPI_AWARENESS_CONTEXT =
-    windef::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2;
-
-pub const DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED: DPI_AWARENESS_CONTEXT =
-    windef::DPI_AWARENESS_CONTEXT_UNAWARE_GDISCALED;
 
 // Safe API to retrieve Windows Messages. Returns None on WM_QUIT result.
 pub fn get_message() -> Result<Option<MSG>, String> {
@@ -63,7 +51,20 @@ pub fn dispatch_message(msg: *const MSG) {
     unsafe { DispatchMessageW(msg) };
 }
 
+// Safe API to retrieve the identifier of the thread and process that created the specified window.
+pub fn get_window_thread_process_id(hwnd: HWND) -> (DWORD, DWORD) {
+    unsafe {
+        let mut process_id: DWORD = 0;
+        let thread_id = winapi::um::winuser::GetWindowThreadProcessId(
+            hwnd,
+            &mut process_id as *mut _ as LPDWORD,
+        );
+        (thread_id, process_id)
+    }
+}
+
 // println like macro for message boxes.
+#[macro_export]
 macro_rules! msgbox {
     ($title:tt, $($arg:tt)*) => ({
         let res = format!($($arg)*);

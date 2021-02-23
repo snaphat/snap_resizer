@@ -8,6 +8,3 @@ edition = "2018"
 
 [dependencies.winapi_safe]
 path = "winapi_safe"
-
-[target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = [ "dwmapi", "winerror", "winuser"] }
