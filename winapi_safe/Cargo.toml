@@ -1,13 +1,10 @@
 [package]
-name = "snap_resizer"
+name = "winapi_safe"
 version = "0.0.1"
 authors = ["Aaron Myles Landwehr <snaphat@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies.winapi_safe]
-path = "winapi_safe"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = [ "dwmapi", "winerror", "winuser"] }

@@ -1,9 +1,8 @@
-#![feature(once_cell)]
-#![feature(trait_alias)]
-#[cfg(windows)]
-mod win_wrapper;
-use win_wrapper::*;
+extern crate winapi_safe;
+//mod win_wrapper;
+//use win_wrapper::*;
 use winapi::shared::minwindef::LPDWORD;
+use winapi_safe::*;
 
 const THRESH: i32 = 40;
 

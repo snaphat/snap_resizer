@@ -1,4 +1,7 @@
 #![macro_use]
+#![feature(once_cell)]
+#![feature(trait_alias)]
+#[cfg(windows)]
 extern crate winapi;
 use std::io::Error;
 use std::lazy::SyncLazy;
